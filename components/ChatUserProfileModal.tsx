@@ -2,13 +2,14 @@
 import React from 'react';
 import { ChatUser } from '../types';
 import { CHAT_ROLES } from '../constants';
-// FIX: Add ClockIcon to imports.
 import { KairosAvatarDefault, KairosAvatarCoupon, KairosAvatarRoulette, KairosAvatarTrophy, KairosAvatarStore, KairosAvatarGift, VipBadgeIcon, SparklesIcon, CalendarDaysIcon, ClockIcon } from './Icons';
 
 interface ChatUserProfileModalProps {
   user: ChatUser | null;
+  currentUser: ChatUser;
   isOpen: boolean;
   onClose: () => void;
+  onStartPrivateMessage: (targetUser: ChatUser) => void;
 }
 
 const AVATAR_COMPONENTS_MAP = {
@@ -46,7 +47,7 @@ const timeSince = (timestamp: number | undefined): string => {
 };
 
 
-const ChatUserProfileModal: React.FC<ChatUserProfileModalProps> = ({ user, isOpen, onClose }) => {
+const ChatUserProfileModal: React.FC<ChatUserProfileModalProps> = ({ user, currentUser, isOpen, onClose, onStartPrivateMessage }) => {
     if (!isOpen || !user) return null;
 
     const role = CHAT_ROLES.find(r => r.id === user.roleId) || CHAT_ROLES.find(r => r.id === 'vip')!;
@@ -118,9 +119,14 @@ const ChatUserProfileModal: React.FC<ChatUserProfileModalProps> = ({ user, isOpe
                     </div>
 
                     <div className="mt-6 flex gap-3">
-                        <button className="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded-md transition-colors text-sm cursor-not-allowed" disabled>
-                            Mensagem Privada
-                        </button>
+                        {user.id !== currentUser.id && (
+                            <button
+                                onClick={() => onStartPrivateMessage(user)}
+                                className="flex-1 bg-sky-600 hover:bg-sky-700 text-white font-semibold py-2 px-4 rounded-md transition-colors text-sm"
+                            >
+                                Mensagem Privada
+                            </button>
+                        )}
                     </div>
                 </div>
             </div>

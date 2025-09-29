@@ -99,7 +99,7 @@ body {
       "header"
       "messages"
       "input";
-    height: 100vh;
+    height: 100dvh;
   }
   .chat-servers-column {
     display: none;

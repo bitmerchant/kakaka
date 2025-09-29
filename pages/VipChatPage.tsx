@@ -304,8 +304,6 @@ const VipChatPage: React.FC<{ onNavigate: (view: ViewState) => void }> = ({ onNa
             return;
         }
 
-        const wasAtBottom = isAtBottomRef.current;
-
         const newMsg: ChatMessage = {
             id: `msg_${Date.now()}`,
             channelId: activeChannel.id,
@@ -314,16 +312,15 @@ const VipChatPage: React.FC<{ onNavigate: (view: ViewState) => void }> = ({ onNa
             timestamp: Date.now(),
             type: 'user'
         };
+
+        // Add the new message to the state and the mock data source
         setMessages(prev => [...prev, newMsg]);
-        CHAT_MOCK_MESSAGES.push(newMsg); // Add to mock data for persistence in this session
+        CHAT_MOCK_MESSAGES.push(newMsg);
         setNewMessage('');
         
+        // Always scroll to bottom after sending a message for immediate feedback
         setTimeout(() => {
-            if (wasAtBottom) {
-                scrollToBottom();
-            } else {
-                setShowNewMessagesButton(true);
-            }
+            scrollToBottom();
         }, 0);
     };
 
@@ -387,6 +384,31 @@ const VipChatPage: React.FC<{ onNavigate: (view: ViewState) => void }> = ({ onNa
             }
             return newSet;
         });
+    };
+
+    const handleStartPrivateMessage = (targetUser: ChatUser) => {
+        if (!user) return;
+        const channelId = `pm_${[user.id, targetUser.id].sort().join('_')}`;
+
+        const existingChannel = chatChannels.find(c => c.id === channelId);
+
+        if (existingChannel) {
+            setActiveChannel(existingChannel);
+        } else {
+            const newChannel: ChatChannel = {
+                id: channelId,
+                name: `@${targetUser.nickname}`,
+                description: `Conversa privada com ${targetUser.nickname}`,
+                isPrivate: true,
+                isLocked: false,
+                isDirectMessage: true,
+                participants: [user.id, targetUser.id]
+            };
+            setChatChannels(prev => [newChannel, ...prev]);
+            setActiveChannel(newChannel);
+        }
+        setSelectedUser(null);
+        setIsUsersOpen(false); // Close sidebar on mobile
     };
 
     if (!isAuthenticated || !user?.isVip) {
@@ -568,7 +590,7 @@ const VipChatPage: React.FC<{ onNavigate: (view: ViewState) => void }> = ({ onNa
                 updateUserSettings={updateUserSettings}
               />
             )}
-            <ChatUserProfileModal user={selectedUser} isOpen={!!selectedUser} onClose={() => setSelectedUser(null)} />
+            <ChatUserProfileModal user={selectedUser} currentUser={currentUserForChat} isOpen={!!selectedUser} onClose={() => setSelectedUser(null)} onStartPrivateMessage={handleStartPrivateMessage} />
         </>
     );
 };
