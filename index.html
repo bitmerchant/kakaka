@@ -1,0 +1,206 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>KAIROS Prompt Hub</title>
+    <link rel="icon" type="image/svg+xml" href="/assets/bolt.svg" />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Orbitron:wght@400..900&family=Roboto+Mono:ital,wght@0,100..700;1,100..700&display=swap" rel="stylesheet">
+<script type="importmap">
+{
+  "imports": {
+    "react/": "https://aistudiocdn.com/react@^19.1.1/",
+    "react": "https://aistudiocdn.com/react@^19.1.1",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.1.1/"
+  }
+}
+</script>
+  <link rel="stylesheet" href="/index.css">
+    <style>
+      /* Custom scrollbar for webkit browsers */
+      .custom-scrollbar::-webkit-scrollbar {
+        width: 4px; /* Ultra-thin */
+        height: 4px;
+      }
+      .custom-scrollbar::-webkit-scrollbar-track {
+        background: transparent; /* No track background */
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb {
+        background-color: var(--user-accent-color, #0ea5e9); /* Neon color */
+        border-radius: 2px;
+        box-shadow: 0 0 3px var(--user-accent-color, #0ea5e9); /* Neon glow */
+      }
+      .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+        background-color: color-mix(in srgb, var(--user-accent-color, #0ea5e9) 80%, white);
+      }
+      /* Custom scrollbar for Firefox */
+      .custom-scrollbar {
+        scrollbar-width: thin;
+        scrollbar-color: var(--user-accent-color, #0ea5e9) transparent;
+      }
+      
+      /* VIP Glow effect for text */
+      .vip-glow-text {
+        color: var(--user-accent-color, #f59e0b);
+        text-shadow: 0 0 5px var(--user-accent-glow-color, #f59e0b), 0 0 10px var(--user-accent-glow-color, #f59e0b), 0 0 15px var(--user-accent-glow-color, #f59e0b);
+      }
+      
+      /* VIP Tab Active State */
+      .vip-tab-active {
+         border-bottom-color: var(--user-accent-color, #f59e0b) !important;
+         background-color: color-mix(in srgb, var(--user-accent-color, #f59e0b) 20%, transparent);
+      }
+
+      /* CTA Button Hover Effects */
+      .cta-button {
+          position: relative;
+          overflow: hidden;
+      }
+      .cta-hover-glow::after {
+          content: '';
+          position: absolute;
+          top: 50%;
+          left: 50%;
+          width: 200%;
+          padding-bottom: 200%;
+          border-radius: 50%;
+          background: radial-gradient(circle, rgba(255,255,255,0.3) 0%, rgba(255,255,255,0) 70%);
+          transform: translate(-50%, -50%) scale(0);
+          transition: transform 0.7s ease;
+          pointer-events: none;
+      }
+      .cta-button.cta-hover-glow:hover::after {
+          transform: translate(-50%, -50%) scale(1);
+      }
+      .cta-button.cta-hover-pulse:hover {
+          animation: pulse-animation 1.5s infinite;
+      }
+      .cta-button.cta-hover-subtle:hover {
+        filter: brightness(1.1);
+      }
+      
+      @keyframes pulse-animation {
+        0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--user-accent-color, #f59e0b) 50%, transparent); }
+        70% { box-shadow: 0 0 0 15px color-mix(in srgb, var(--user-accent-color, #f59e0b) 0%, transparent); }
+        100% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--user-accent-color, #f59e0b) 0%, transparent); }
+      }
+
+      /* Keyframes for Confetti */
+      @keyframes fall {
+        0% { transform: translateY(-20px) rotate(0deg); opacity: 1; }
+        100% { transform: translateY(100vh) rotate(720deg); opacity: 0; }
+      }
+      .animate-fall {
+        animation-name: fall;
+        animation-timing-function: linear;
+        animation-iteration-count: 1;
+        animation-fill-mode: forwards;
+      }
+
+       /* Animation for RGB border */
+      @keyframes spin-slow-border {
+        from {
+          transform: rotate(0deg);
+        }
+        to {
+          transform: rotate(360deg);
+        }
+      }
+      .animate-spin-slow-border {
+        animation: spin-slow-border 5s linear infinite;
+      }
+      
+      /* Chat bubble styles */
+      .chat-bubble-ai { border-radius: 18px 18px 18px 4px; background-color: #334155; } /* slate-700 */
+      .chat-bubble-user { border-radius: 18px 18px 4px 18px; background-color: #0ea5e9; color: white; } /* sky-500 */
+      .chat-terminal-block {
+          background-color: #1e293b; /* slate-800 */
+          border: 1px solid #475569; /* slate-600 */
+          color: #94a3b8; /* slate-400 */
+          padding: 12px;
+          border-radius: 8px;
+          font-family: 'Roboto Mono', monospace;
+      }
+      
+      /* Chat Grid Layout */
+      .chat-grid {
+        display: grid;
+        grid-template-columns: 72px 240px 1fr 240px;
+        grid-template-rows: auto 1fr auto;
+        height: calc(100vh - 4rem); /* Full height minus navbar */
+        grid-template-areas:
+          "servers channels header users"
+          "servers channels messages users"
+          "servers channels input users";
+      }
+      .chat-servers-column { grid-area: servers; }
+      .chat-channels-column { grid-area: channels; }
+      .chat-header { grid-area: header; }
+      .chat-messages-column { grid-area: messages; }
+      .chat-input-column { grid-area: input; }
+      .chat-users-column { grid-area: users; }
+
+      .chat-pinned-bar {
+        background-color: #a16207; /* amber-700 */
+        border-bottom: 1px solid #ca8a04; /* amber-600 */
+      }
+      .chat-mention {
+        background-color: #3b82f633; /* blue-500 with opacity */
+        color: #60a5fa; /* blue-400 */
+        padding: 2px 4px;
+        border-radius: 4px;
+        font-weight: 600;
+      }
+      .chat-mention-me {
+        background-color: #f59e0b; /* amber-500 */
+        color: #1e293b; /* slate-800 */
+      }
+      .chat-reaction {
+        display: flex;
+        align-items: center;
+        background-color: #4755694d; /* slate-600 with opacity */
+        border: 1px solid #64748b; /* slate-500 */
+        border-radius: 12px;
+        padding: 2px 8px;
+        transition: all 0.2s ease;
+      }
+      .chat-reaction:hover {
+        background-color: #64748b4d;
+        border-color: #94a3b8;
+      }
+      .chat-reaction-reacted {
+        background-color: #0ea5e94d;
+        border-color: #38bdf8;
+      }
+      .chat-message-system {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        font-size: 0.875rem;
+        color: #94a3b8; /* slate-400 */
+        margin: 8px 0;
+      }
+
+      .chat-message-separator {
+        height: 1px;
+        background: linear-gradient(90deg, transparent, var(--user-accent-color, #0ea5e9), transparent);
+        margin: 8px 0;
+        animation: pulse-separator 6s infinite alternate ease-in-out;
+      }
+
+      @keyframes pulse-separator {
+        from { opacity: 0.15; }
+        to { opacity: 0.4; }
+      }
+
+    </style>
+</head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/index.tsx"></script>
+  </body>
+</html>
