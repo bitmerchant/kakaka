@@ -1,37 +1,58 @@
 
-import React from 'react';
-import { PIX_CODE_COPIA_COLA, AwardedDiscount, PackageForPaymentDisplay } from '../types'; 
+import React, { useEffect } from 'react';
+import { PackageForPaymentDisplay } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { SparklesIcon, CheckIcon, CopyIcon, TicketIcon } from '../components/Icons'; 
+import { TicketIcon } from '../components/Icons';
 
 interface PaymentPageProps {
-  packageToPurchase: PackageForPaymentDisplay; 
-  onPaymentSuccess: () => void; 
+  packageToPurchase: PackageForPaymentDisplay;
   onBack: () => void;
 }
 
-const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentSuccess, onBack }) => {
+const YAMPI_SCRIPT_SRC = "https://api.yampi.io/v2/kairos-hub/public/buy-button/DMJG1YHLT7/js";
+
+const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onBack }) => {
   const { user, isAuthenticated, showAuthModal } = useAuth();
-  const [copied, setCopied] = React.useState(false);
-
-  const handleConfirmPayment = () => {
-    if (!isAuthenticated) {
-        showAuthModal('login'); // Prompt login/register if not authenticated
-        return;
-    }
-    onPaymentSuccess(); 
-  };
-
-  const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(PIX_CODE_COPIA_COLA)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(err => console.error('Erro ao copiar:', err));
-  };
-  
   const accentColorName = packageToPurchase.accentColor.split('-')[1] || 'sky';
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      // Prevent script injection if user is not logged in.
+      return;
+    }
+
+    const scriptId = 'yampi-buy-button-script';
+    // Remove existing script to avoid duplicates on re-render
+    const existingScript = document.getElementById(scriptId);
+    if (existingScript) {
+      existingScript.remove();
+    }
+
+    const script = document.createElement('script');
+    script.id = scriptId;
+    script.src = YAMPI_SCRIPT_SRC;
+    script.className = 'ymp-script';
+    script.async = true;
+
+    // The script will look for a container with this ID to place the button
+    const container = document.getElementById('yampi-button-container');
+    if (container) {
+        container.innerHTML = ''; // Clear previous button before appending new one
+        container.appendChild(script);
+    }
+
+    return () => {
+      // Cleanup script when component unmounts
+      const scriptElement = document.getElementById(scriptId);
+      if (scriptElement) {
+        scriptElement.remove();
+      }
+    };
+  }, [isAuthenticated]); // Re-run effect if authentication state changes
+
+  const handleLoginRedirect = () => {
+      showAuthModal('login');
+  }
 
   return (
     <section id="payment" className="py-16 md:py-24 bg-slate-900 min-h-screen flex items-center justify-center">
@@ -58,65 +79,40 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
           </div>
 
           <div className="p-6 sm:p-8 space-y-8">
-            <div className="text-center">
-              <h3 className="text-xl font-semibold text-sky-400 mb-3">Pague com PIX</h3>
-              <p className="text-slate-400 mb-4">Escaneie o QR Code abaixo com o app do seu banco:</p>
-              <div className="flex justify-center mb-4">
-                <img 
-                  src="/assets/qr.png" 
-                  alt="PIX QR Code" 
-                  className="w-56 h-56 md:w-64 md:h-64 border-4 border-sky-400 rounded-lg shadow-lg bg-white p-1" 
-                />
+            {isAuthenticated ? (
+              <div className="text-center">
+                <h3 className="text-xl font-semibold text-sky-400 mb-3">Complete sua compra</h3>
+                <p className="text-slate-400 mb-6">Clique no botão abaixo para ser redirecionado para um ambiente de pagamento seguro.</p>
+                {/* This container is where the Yampi button will be injected */}
+                <div id="yampi-button-container" className="flex justify-center [&>div]:w-full [&>div]:max-w-xs mx-auto"></div>
+                 <div className="text-xs text-slate-500 mt-4">
+                    Ao continuar, você será redirecionado para o checkout da Yampi.
+                </div>
               </div>
-            </div>
+            ) : (
+                <div className="text-center p-4 bg-slate-700/50 rounded-md">
+                    <h3 className="text-xl font-semibold text-amber-400 mb-3">Acesso Necessário</h3>
+                    <p className="text-slate-300 mb-6">Você precisa estar logado para continuar com a compra. Por favor, faça login ou crie sua conta.</p>
+                    <button
+                        onClick={handleLoginRedirect}
+                        className={`w-full max-w-xs mx-auto px-6 py-3 text-base font-semibold rounded-md transition-all duration-150 shadow-lg
+                        bg-sky-600 text-white hover:bg-sky-500
+                        transform hover:scale-105
+                        focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-sky-400`}
+                    >
+                        Fazer Login ou Cadastrar
+                    </button>
+                </div>
+            )}
 
-            <div className="text-center">
-              <h4 className="text-lg font-semibold text-slate-300 mb-2">Ou use o PIX Copia e Cola:</h4>
-              <div className="relative bg-slate-700 p-3 rounded-md border border-slate-600">
-                <p className="text-sky-300 text-xs sm:text-sm break-all select-all pr-10">{PIX_CODE_COPIA_COLA}</p>
-                <button 
-                    onClick={handleCopyToClipboard} 
-                    className="absolute top-1/2 right-2 transform -translate-y-1/2 text-slate-400 hover:text-sky-400 p-1 rounded-md bg-slate-600 hover:bg-slate-500 transition-colors"
-                    aria-label="Copiar código PIX"
-                >
-                    {copied ? <CheckIcon className="w-5 h-5 text-green-400" /> : <CopyIcon className="w-5 h-5" />}
-                </button>
-              </div>
-            </div>
-
-            <div className="text-sm text-slate-400 bg-slate-700/50 p-4 rounded-md border border-slate-600/50">
-              <h4 className="font-semibold text-slate-200 mb-2">Instruções:</h4>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Abra o aplicativo do seu banco e escolha a opção PIX.</li>
-                <li>Selecione "Pagar com QR Code" ou "PIX Copia e Cola".</li>
-                <li>Escaneie o QR Code ou cole o código acima.</li>
-                <li>Confirme os dados e o valor.</li>
-                <li>Após o pagamento, clique no botão "Já Realizei o Pagamento" abaixo.</li>
-              </ol>
-               <p className="mt-3 text-amber-400">Este é um processo simulado. Clique no botão abaixo para confirmar a "compra".</p>
-               {!isAuthenticated && (
-                <p className="mt-3 text-yellow-400 font-semibold">Você não está logado. Faça login ou cadastre-se para finalizar a compra e salvar seu progresso.</p>
-               )}
-            </div>
-            
             <div className="flex flex-col sm:flex-row gap-4 mt-8">
                  <button
                     onClick={onBack}
-                    className={`w-full sm:w-1/2 px-6 py-3 text-base font-semibold rounded-md transition-all duration-150
+                    className={`w-full px-6 py-3 text-base font-semibold rounded-md transition-all duration-150
                     border-2 border-slate-600 text-slate-300 hover:border-${accentColorName}-500 hover:text-white
                     focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-${accentColorName}-400`}
                 >
                     Voltar
-                </button>
-                <button
-                    onClick={handleConfirmPayment}
-                    className={`w-full sm:w-1/2 px-6 py-3 text-base font-semibold rounded-md transition-all duration-150 shadow-lg hover:shadow-xl
-                    ${packageToPurchase.bgColor} text-white 
-                    transform hover:scale-105
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-${accentColorName}-400 flex items-center justify-center`}
-                >
-                    <SparklesIcon className="w-5 h-5 mr-2" />
-                    {isAuthenticated ? "Já Realizei o Pagamento (Simular)" : "Login/Cadastro para Pagar"}
                 </button>
             </div>
           </div>

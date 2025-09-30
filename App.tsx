@@ -20,6 +20,7 @@ import LivePurchaseNotification from './components/LivePurchaseNotification';
 import ChangelogModal from './components/ChangelogModal'; // Added
 
 import PaymentPage from './pages/PaymentPage';
+import PaymentSuccessPage from './pages/PaymentSuccessPage';
 import MyPurchasesPage from './pages/MyPurchasesPage';
 import BlogListPage from './pages/BlogListPage';
 import BlogPostPage from './pages/BlogPostPage';
@@ -108,6 +109,19 @@ const AppContent: React.FC = () => {
         }
     }
   }, [currentView, discountToApplyOnNextPurchase, setDiscountForNextPurchase, isLegalDocModalOpen]);
+
+
+  // This effect checks for a payment success redirect from Yampi on initial load.
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    // This simulates the redirect from Yampi after a successful payment.
+    // In a real scenario, this URL would be configured in the Yampi dashboard.
+    if (urlParams.get('source') === 'yampi' && urlParams.get('status') === 'paid') {
+      handleNavigate('paymentSuccess');
+      // Clean up the URL to prevent re-triggering the payment success flow on refresh.
+      window.history.replaceState({}, document.title, window.location.pathname);
+    }
+  }, [handleNavigate]);
 
 
   const handlePurchasePackage = useCallback((packageDetailsConstant: PackageDescription) => {
@@ -235,7 +249,9 @@ const AppContent: React.FC = () => {
                 </div>
             );
         }
-        return <PaymentPage packageToPurchase={packageToPurchaseDetails} onPaymentSuccess={handlePaymentSuccess} onBack={() => handleNavigate('main', undefined, 'prompts')} />;
+        return <PaymentPage packageToPurchase={packageToPurchaseDetails} onBack={() => handleNavigate('main', undefined, 'prompts')} />;
+      case 'paymentSuccess':
+        return <PaymentSuccessPage onNavigate={handleNavigate} onPaymentConfirmed={handlePaymentSuccess} />;
       case 'myPurchases':
         return <MyPurchasesPage onNavigate={handleNavigate} />;
       case 'blogList':
