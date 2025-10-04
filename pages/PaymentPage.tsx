@@ -27,19 +27,16 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
 
   // Efeito para verificar a disponibilidade do SDK do Mercado Pago
   useEffect(() => {
-    console.log("Verificando SDK do Mercado Pago...");
     if (window.MercadoPago) {
-      console.log("SDK já estava pronto.");
       setIsSDKReady(true);
       return;
     }
     const interval = setInterval(() => {
       if (window.MercadoPago) {
-        console.log("SDK do Mercado Pago carregado.");
         setIsSDKReady(true);
         clearInterval(interval);
       }
-    }, 500); // Verifica a cada 500ms
+    }, 500);
     return () => clearInterval(interval);
   }, []);
 
@@ -58,7 +55,6 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
       return;
     }
 
-    console.log(`Iniciando criação da preferência para o e-mail: ${payerEmail}`);
     setIsLoading(true);
     setError(null);
 
@@ -80,16 +76,16 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
           const errorData = await response.json();
           errorMessage = errorData.error || errorMessage;
         } catch (e) {
-          console.error("Não foi possível analisar a resposta de erro como JSON.", e);
+          // Silencioso, o fallback já está definido
         }
         throw new Error(errorMessage);
       }
 
       const data = await response.json();
-      console.log("Preference ID recebida:", data.preferenceId);
+      // Log solicitado pelo usuário
+      console.log("Preference ID recebido do backend:", data.preferenceId);
       setPreferenceId(data.preferenceId);
     } catch (err) {
-      console.error(err);
       setError(err instanceof Error ? err.message : 'Ocorreu um erro desconhecido.');
     } finally {
       setIsLoading(false);
@@ -105,57 +101,52 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
     }
   }, [createPreference]);
 
-  // Efeito para inicializar o PIX Brick, agora dependente do SDK e da preferenceId
+  // Efeito para inicializar o PIX Brick, com a lógica de guarda e logs solicitados
   useEffect(() => {
-    console.log(`Tentando renderizar o Brick. SDK pronto: ${isSDKReady}, Preference ID: ${preferenceId}`);
-    if (preferenceId && isSDKReady) {
-      console.log("Ambas as condições atendidas. Renderizando o PIX Brick...");
-      const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
-      if (!mpPublicKey) {
-        console.error("Chave pública do Mercado Pago (VITE_MP_PUBLIC_KEY) não encontrada. Verifique o arquivo .env");
-        setError("Erro de configuração: a chave pública do Mercado Pago não foi definida.");
-        return;
-      }
+    // Logs solicitados pelo usuário
+    console.log("SDK pronto:", isSDKReady);
+    console.log("Preference ID atual:", preferenceId);
 
-      const mp = new window.MercadoPago(mpPublicKey, { locale: 'pt-BR' });
-      const bricksBuilder = mp.bricks();
-      const containerId = "pix-container";
-
-      const renderPixBrick = async () => {
-        const container = document.getElementById(containerId);
-        if (container) container.innerHTML = "";
-
-        try {
-          await bricksBuilder.create('pix', containerId, {
-            initialization: {
-              preferenceId: preferenceId,
-            },
-            customization: {
-              visual: { copy_code_text: 'Copiar Código PIX', qr_code_text: 'Escanear QR Code' }
-            },
-            callbacks: {
-              onReady: () => {
-                console.log('PIX Brick pronto e renderizado!');
-              },
-              onError: (err) => {
-                console.error('Erro no PIX Brick:', err);
-                setError("Ocorreu um erro ao renderizar o QR Code do PIX.");
-              },
-              // O callback onSubmit não é padrão para o PIX Brick, que é mais informativo.
-              // A confirmação do pagamento é feita pelo webhook.
-              // A chamada onPaymentSuccess pode ser vinculada a outro evento se necessário,
-              // ou removida se o fluxo depende apenas do webhook.
-            },
-          });
-        } catch (e) {
-            console.error("Falha ao chamar bricksBuilder.create:", e);
-            setError("Falha crítica ao tentar criar o componente de pagamento.");
-        }
-      };
-
-      renderPixBrick();
+    if (!isSDKReady || !preferenceId) {
+      return; // Aguarda ambas as condições serem verdadeiras
     }
-  }, [preferenceId, isSDKReady]);
+
+    const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+    if (!mpPublicKey) {
+      setError("Erro de configuração: a chave pública do Mercado Pago não foi definida.");
+      return;
+    }
+
+    const mp = new window.MercadoPago(mpPublicKey, { locale: 'pt-BR' });
+    const bricksBuilder = mp.bricks();
+    const containerId = "pix-container";
+
+    const renderPixBrick = async () => {
+      const container = document.getElementById(containerId);
+      if (container) container.innerHTML = "";
+
+      await bricksBuilder.create('pix', containerId, {
+        initialization: { preferenceId },
+        customization: {
+          visual: {
+            copy_code_text: 'Copiar Código PIX',
+            qr_code_text: 'Escanear QR Code'
+          }
+        },
+        callbacks: {
+          onReady: () => {
+            console.log('PIX Brick pronto!');
+          },
+          onError: (err) => {
+            console.error('Erro no PIX Brick:', err);
+            setError("Ocorreu um erro ao renderizar o QR Code do PIX.");
+          }
+        }
+      });
+    };
+
+    renderPixBrick();
+  }, [isSDKReady, preferenceId]);
 
   const renderGuestEmailInput = () => (
     <div className="p-6 sm:p-8 space-y-4">
@@ -193,7 +184,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
       return <div className="text-center text-red-400 p-8">{error}</div>;
     }
 
-    return <div id="pix-container" className="p-6 sm:p-8"></div>;
+    return <div id="pix-container" className="p-6 sm:p-8 min-h-[300px]"></div>;
   };
 
   return (
