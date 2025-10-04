@@ -1,8 +1,19 @@
-
-import React from 'react';
-import { PIX_CODE_COPIA_COLA, AwardedDiscount, PackageForPaymentDisplay } from '../types'; 
+import React, { useState, useEffect, useCallback } from 'react';
+import { PackageForPaymentDisplay } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { SparklesIcon, CheckIcon, CopyIcon, TicketIcon } from '../components/Icons'; 
+import { SparklesIcon, TicketIcon } from '../components/Icons';
+
+// --- INSTRUÇÃO ---
+// Para que o frontend funcione, crie um arquivo .env na raiz do projeto
+// e adicione sua Public Key do Mercado Pago, como no exemplo abaixo:
+// VITE_MP_PUBLIC_KEY=SUA_PUBLIC_KEY_AQUI
+
+// Tipagem para o objeto MercadoPago que é carregado no window
+declare global {
+  interface Window {
+    MercadoPago: any;
+  }
+}
 
 interface PaymentPageProps {
   packageToPurchase: PackageForPaymentDisplay; 
@@ -12,26 +23,151 @@ interface PaymentPageProps {
 
 const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentSuccess, onBack }) => {
   const { user, isAuthenticated, showAuthModal } = useAuth();
-  const [copied, setCopied] = React.useState(false);
+  const [preferenceId, setPreferenceId] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleConfirmPayment = () => {
-    if (!isAuthenticated) {
-        showAuthModal('login'); // Prompt login/register if not authenticated
-        return;
-    }
-    onPaymentSuccess(); 
-  };
-
-  const handleCopyToClipboard = () => {
-    navigator.clipboard.writeText(PIX_CODE_COPIA_COLA)
-      .then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      })
-      .catch(err => console.error('Erro ao copiar:', err));
-  };
-  
   const accentColorName = packageToPurchase.accentColor.split('-')[1] || 'sky';
+
+  // Função para criar a preferência de pagamento
+  const createPreference = useCallback(async () => {
+    if (!isAuthenticated || !user?.email) {
+      showAuthModal('login');
+      setIsLoading(false);
+      setError("Você precisa estar logado para continuar.");
+      return;
+    }
+
+    try {
+      const response = await fetch('/.netlify/functions/criar-preferencia', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          produto: packageToPurchase.title,
+          // A API espera um número, então garantimos que 'price' seja numérico
+          valor: Number(packageToPurchase.price),
+          email: user.email,
+          origin: window.location.origin,
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error('Falha ao criar a preferência de pagamento.');
+      }
+
+      const data = await response.json();
+      setPreferenceId(data.preferenceId);
+    } catch (err) {
+      console.error(err);
+      setError(err instanceof Error ? err.message : 'Ocorreu um erro desconhecido.');
+    } finally {
+      setIsLoading(false);
+    }
+  }, [packageToPurchase, user, isAuthenticated, showAuthModal]);
+
+  // Efeito para criar a preferência quando o componente é montado
+  useEffect(() => {
+    createPreference();
+  }, [createPreference]);
+
+  // Efeito para inicializar o Brick do Mercado Pago quando a preferenceId estiver pronta
+  useEffect(() => {
+    if (preferenceId) {
+      const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
+      if (!mpPublicKey) {
+        console.error("Chave pública do Mercado Pago não encontrada. Verifique o arquivo .env");
+        setError("Erro de configuração: a chave pública do Mercado Pago não foi definida.");
+        return;
+      }
+
+      const mp = new window.MercadoPago(mpPublicKey, {
+        locale: 'pt-BR'
+      });
+      const bricksBuilder = mp.bricks();
+
+      const renderPaymentBrick = async () => {
+        // Limpa o container caso já exista um Brick renderizado
+        const container = document.getElementById("paymentBrick_container");
+        if (container.firstChild) {
+            container.removeChild(container.firstChild);
+        }
+
+        await bricksBuilder.create('payment', 'paymentBrick_container', {
+          initialization: {
+            amount: Number(packageToPurchase.price),
+            preferenceId: preferenceId,
+          },
+          customization: {
+            visual: {
+              style: {
+                theme: 'dark', // ou 'default', 'bootstrap'
+                customVariables: {
+                  formBackgroundColor: '#1e293b', // slate-800
+                  baseColor: '#64748b', // slate-500
+                  textColor: '#e2e8f0', // slate-200
+                  inputBackgroundColor: '#0f172a', // slate-900
+                  // Cor do botão de pagamento, usando a cor do pacote
+                  buttonBackgroundColor: `#${packageToPurchase.accentColor.split('-')[1] === 'sky' ? '0ea5e9' : 'f59e0b'}`,
+                }
+              }
+            },
+            paymentMethods: {
+              ticket: 'all',
+              bankTransfer: ['pix'],
+              creditCard: 'all',
+              debitCard: 'all',
+              mercadoPago: 'all',
+            },
+          },
+          callbacks: {
+            onReady: () => {
+              /*
+                Callback chamado quando o Brick estiver pronto.
+              */
+            },
+            onSubmit: ({ selectedPaymentMethod, formData }) => {
+              // Callback chamado ao clicar no botão de pagar
+              // A promise é resolvida sem valor, apenas para indicar que o fluxo de pagamento foi iniciado.
+              // O resultado final do pagamento será notificado via webhook.
+              console.log('Pagamento enviado:', { selectedPaymentMethod, formData });
+              return new Promise<void>((resolve) => {
+                  // O onPaymentSuccess pode ser chamado aqui para dar um feedback inicial ao usuário,
+                  // ou aguardar a confirmação do webhook para uma confirmação final.
+                  // Por simplicidade, vamos chamar aqui para fechar o modal.
+                  onPaymentSuccess();
+                  resolve();
+              });
+            },
+            onError: (error) => {
+              // Callback chamado para erros de preenchimento de formulário
+              console.error('Erro no Brick de Pagamento:', error);
+            },
+          },
+        });
+      };
+
+      renderPaymentBrick();
+    }
+  }, [preferenceId, packageToPurchase]);
+
+  const renderContent = () => {
+    if (isLoading) {
+      return <div className="text-center text-slate-300 p-8">Carregando gateway de pagamento...</div>;
+    }
+
+    if (error) {
+      return <div className="text-center text-red-400 p-8">{error}</div>;
+    }
+
+    if (preferenceId) {
+      // O container do Brick será renderizado aqui
+      return <div id="paymentBrick_container" className="p-6 sm:p-8"></div>;
+    }
+
+    return null;
+  };
 
   return (
     <section id="payment" className="py-16 md:py-24 bg-slate-900 min-h-screen flex items-center justify-center">
@@ -49,76 +185,24 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
                 <p className={`text-lg font-semibold text-green-400 flex items-center justify-center`}>
                   <TicketIcon className="w-5 h-5 mr-1.5"/> Desconto KAIROS: -{packageToPurchase.discountApplied.percentage}%
                 </p>
-                <p className="text-xs text-slate-500">(Válido até: {new Date(packageToPurchase.discountApplied.expiry).toLocaleDateString('pt-BR')})</p>
               </div>
             )}
-            <p className={`text-2xl font-semibold text-center ${packageToPurchase.accentColor} mb-6`}>
+            <p className={`text-2xl font-semibold text-center ${packageToPurchase.accentColor} mb-2`}>
               Total: {packageToPurchase.priceDisplay}
             </p>
           </div>
 
-          <div className="p-6 sm:p-8 space-y-8">
-            <div className="text-center">
-              <h3 className="text-xl font-semibold text-sky-400 mb-3">Pague com PIX</h3>
-              <p className="text-slate-400 mb-4">Escaneie o QR Code abaixo com o app do seu banco:</p>
-              <div className="flex justify-center mb-4">
-                <img 
-                  src="/assets/qr.png" 
-                  alt="PIX QR Code" 
-                  className="w-56 h-56 md:w-64 md:h-64 border-4 border-sky-400 rounded-lg shadow-lg bg-white p-1" 
-                />
-              </div>
-            </div>
+          {renderContent()}
 
-            <div className="text-center">
-              <h4 className="text-lg font-semibold text-slate-300 mb-2">Ou use o PIX Copia e Cola:</h4>
-              <div className="relative bg-slate-700 p-3 rounded-md border border-slate-600">
-                <p className="text-sky-300 text-xs sm:text-sm break-all select-all pr-10">{PIX_CODE_COPIA_COLA}</p>
-                <button 
-                    onClick={handleCopyToClipboard} 
-                    className="absolute top-1/2 right-2 transform -translate-y-1/2 text-slate-400 hover:text-sky-400 p-1 rounded-md bg-slate-600 hover:bg-slate-500 transition-colors"
-                    aria-label="Copiar código PIX"
-                >
-                    {copied ? <CheckIcon className="w-5 h-5 text-green-400" /> : <CopyIcon className="w-5 h-5" />}
-                </button>
-              </div>
-            </div>
-
-            <div className="text-sm text-slate-400 bg-slate-700/50 p-4 rounded-md border border-slate-600/50">
-              <h4 className="font-semibold text-slate-200 mb-2">Instruções:</h4>
-              <ol className="list-decimal list-inside space-y-1">
-                <li>Abra o aplicativo do seu banco e escolha a opção PIX.</li>
-                <li>Selecione "Pagar com QR Code" ou "PIX Copia e Cola".</li>
-                <li>Escaneie o QR Code ou cole o código acima.</li>
-                <li>Confirme os dados e o valor.</li>
-                <li>Após o pagamento, clique no botão "Já Realizei o Pagamento" abaixo.</li>
-              </ol>
-               <p className="mt-3 text-amber-400">Este é um processo simulado. Clique no botão abaixo para confirmar a "compra".</p>
-               {!isAuthenticated && (
-                <p className="mt-3 text-yellow-400 font-semibold">Você não está logado. Faça login ou cadastre-se para finalizar a compra e salvar seu progresso.</p>
-               )}
-            </div>
-            
-            <div className="flex flex-col sm:flex-row gap-4 mt-8">
-                 <button
-                    onClick={onBack}
-                    className={`w-full sm:w-1/2 px-6 py-3 text-base font-semibold rounded-md transition-all duration-150
-                    border-2 border-slate-600 text-slate-300 hover:border-${accentColorName}-500 hover:text-white
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-${accentColorName}-400`}
-                >
-                    Voltar
-                </button>
-                <button
-                    onClick={handleConfirmPayment}
-                    className={`w-full sm:w-1/2 px-6 py-3 text-base font-semibold rounded-md transition-all duration-150 shadow-lg hover:shadow-xl
-                    ${packageToPurchase.bgColor} text-white 
-                    transform hover:scale-105
-                    focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-${accentColorName}-400 flex items-center justify-center`}
-                >
-                    <SparklesIcon className="w-5 h-5 mr-2" />
-                    {isAuthenticated ? "Já Realizei o Pagamento (Simular)" : "Login/Cadastro para Pagar"}
-                </button>
-            </div>
+          <div className="p-6 sm:p-8 border-t-2 border-slate-700/50">
+             <button
+                onClick={onBack}
+                className={`w-full px-6 py-3 text-base font-semibold rounded-md transition-all duration-150
+                border-2 border-slate-600 text-slate-300 hover:border-${accentColorName}-500 hover:text-white
+                focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-slate-800 focus:ring-${accentColorName}-400`}
+            >
+                Voltar
+            </button>
           </div>
         </div>
       </div>
