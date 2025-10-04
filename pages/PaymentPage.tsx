@@ -1,14 +1,13 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { PackageForPaymentDisplay } from '../types';
 import { useAuth } from '../contexts/AuthContext';
-import { SparklesIcon, TicketIcon } from '../components/Icons';
+import { SparklesIcon, TicketIcon, EnvelopeIcon } from '../components/Icons';
 
 // --- INSTRUÇÃO ---
 // Para que o frontend funcione, crie um arquivo .env na raiz do projeto
 // e adicione sua Public Key do Mercado Pago, como no exemplo abaixo:
 // VITE_MP_PUBLIC_KEY=SUA_PUBLIC_KEY_AQUI
 
-// Tipagem para o objeto MercadoPago que é carregado no window
 declare global {
   interface Window {
     MercadoPago: any;
@@ -22,21 +21,41 @@ interface PaymentPageProps {
 }
 
 const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentSuccess, onBack }) => {
-  const { user, isAuthenticated, showAuthModal } = useAuth();
+  const { user, isAuthenticated } = useAuth();
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [guestEmail, setGuestEmail] = useState('');
 
   const accentColorName = packageToPurchase.accentColor.split('-')[1] || 'sky';
 
+  // Função para validar email simples
+  const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+
+  // Determina o e-mail a ser usado e se está pronto para a criação da preferência
+  const getPayerEmail = (): string | null => {
+    if (isAuthenticated && user?.email) {
+      return user.email;
+    }
+    if (!isAuthenticated && isValidEmail(guestEmail)) {
+      return guestEmail;
+    }
+    return null;
+  };
+
   // Função para criar a preferência de pagamento
   const createPreference = useCallback(async () => {
-    if (!isAuthenticated || !user?.email) {
-      showAuthModal('login');
-      setIsLoading(false);
-      setError("Você precisa estar logado para continuar.");
-      return;
+    const payerEmail = getPayerEmail();
+
+    // Não prossegue se não houver um e-mail válido
+    if (!payerEmail) {
+        setIsLoading(false);
+        // Não define um erro aqui, apenas espera a entrada do usuário
+        return;
     }
+
+    setIsLoading(true);
+    setError(null);
 
     try {
       const response = await fetch('/.netlify/functions/criar-preferencia', {
@@ -46,15 +65,22 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
         },
         body: JSON.stringify({
           produto: packageToPurchase.title,
-          // A API espera um número, então garantimos que 'price' seja numérico
-          valor: Number(packageToPurchase.price),
-          email: user.email,
+          valor: packageToPurchase.price,
+          email: payerEmail,
           origin: window.location.origin,
         }),
       });
 
       if (!response.ok) {
-        throw new Error('Falha ao criar a preferência de pagamento.');
+        // Tenta ler a resposta de erro como JSON, mas usa um fallback se falhar (ex: erro 404)
+        let errorMessage = 'Falha ao criar a preferência de pagamento.';
+        try {
+          const errorData = await response.json();
+          errorMessage = errorData.error || errorMessage;
+        } catch (e) {
+          console.error("Não foi possível analisar a resposta de erro como JSON.", e);
+        }
+        throw new Error(errorMessage);
       }
 
       const data = await response.json();
@@ -65,14 +91,22 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
     } finally {
       setIsLoading(false);
     }
-  }, [packageToPurchase, user, isAuthenticated, showAuthModal]);
+  }, [packageToPurchase, guestEmail, user, isAuthenticated]);
 
-  // Efeito para criar a preferência quando o componente é montado
+  // Efeito para criar a preferência assim que um e-mail válido estiver disponível
   useEffect(() => {
-    createPreference();
-  }, [createPreference]);
+    // Para usuários logados, cria imediatamente.
+    // Para convidados, espera o preenchimento do e-mail.
+    if (getPayerEmail()) {
+        createPreference();
+    } else {
+        // Se o usuário deslogar ou o email ficar inválido, limpa a preferência
+        setPreferenceId(null);
+        setIsLoading(false);
+    }
+  }, [createPreference, guestEmail, user, isAuthenticated]);
 
-  // Efeito para inicializar o Brick do Mercado Pago quando a preferenceId estiver pronta
+  // Efeito para inicializar o Brick do Mercado Pago
   useEffect(() => {
     if (preferenceId) {
       const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
@@ -82,36 +116,25 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
         return;
       }
 
-      const mp = new window.MercadoPago(mpPublicKey, {
-        locale: 'pt-BR'
-      });
+      const mp = new window.MercadoPago(mpPublicKey, { locale: 'pt-BR' });
       const bricksBuilder = mp.bricks();
 
       const renderPaymentBrick = async () => {
-        // Limpa o container caso já exista um Brick renderizado
-        const container = document.getElementById("paymentBrick_container");
-        if (container.firstChild) {
-            container.removeChild(container.firstChild);
+        const containerId = "paymentBrick_container";
+        const container = document.getElementById(containerId);
+        if (container?.firstChild) {
+            // Limpa o container para evitar renderizações duplicadas
+            container.innerHTML = "";
         }
 
-        await bricksBuilder.create('payment', 'paymentBrick_container', {
+        await bricksBuilder.create('payment', containerId, {
           initialization: {
-            amount: Number(packageToPurchase.price),
+            amount: packageToPurchase.price,
             preferenceId: preferenceId,
           },
           customization: {
             visual: {
-              style: {
-                theme: 'dark', // ou 'default', 'bootstrap'
-                customVariables: {
-                  formBackgroundColor: '#1e293b', // slate-800
-                  baseColor: '#64748b', // slate-500
-                  textColor: '#e2e8f0', // slate-200
-                  inputBackgroundColor: '#0f172a', // slate-900
-                  // Cor do botão de pagamento, usando a cor do pacote
-                  buttonBackgroundColor: `#${packageToPurchase.accentColor.split('-')[1] === 'sky' ? '0ea5e9' : 'f59e0b'}`,
-                }
-              }
+              style: { theme: 'dark' },
             },
             paymentMethods: {
               ticket: 'all',
@@ -122,26 +145,14 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
             },
           },
           callbacks: {
-            onReady: () => {
-              /*
-                Callback chamado quando o Brick estiver pronto.
-              */
-            },
-            onSubmit: ({ selectedPaymentMethod, formData }) => {
-              // Callback chamado ao clicar no botão de pagar
-              // A promise é resolvida sem valor, apenas para indicar que o fluxo de pagamento foi iniciado.
-              // O resultado final do pagamento será notificado via webhook.
-              console.log('Pagamento enviado:', { selectedPaymentMethod, formData });
-              return new Promise<void>((resolve) => {
-                  // O onPaymentSuccess pode ser chamado aqui para dar um feedback inicial ao usuário,
-                  // ou aguardar a confirmação do webhook para uma confirmação final.
-                  // Por simplicidade, vamos chamar aqui para fechar o modal.
-                  onPaymentSuccess();
-                  resolve();
-              });
+            onReady: () => {},
+            onSubmit: () => {
+              // A promise é resolvida sem valor para indicar o início do fluxo.
+              // O resultado final será notificado via webhook.
+              onPaymentSuccess();
+              return new Promise<void>((resolve) => resolve());
             },
             onError: (error) => {
-              // Callback chamado para erros de preenchimento de formulário
               console.error('Erro no Brick de Pagamento:', error);
             },
           },
@@ -152,7 +163,33 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
     }
   }, [preferenceId, packageToPurchase]);
 
+  const renderGuestEmailInput = () => (
+    <div className="p-6 sm:p-8 space-y-4">
+        <label htmlFor="guest-email" className="block text-lg font-semibold text-sky-400 text-center">
+            Digite seu e-mail para continuar
+        </label>
+        <div className="relative">
+            <EnvelopeIcon className="w-5 h-5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+            <input
+                type="email"
+                id="guest-email"
+                value={guestEmail}
+                onChange={(e) => setGuestEmail(e.target.value)}
+                placeholder="seu.email@exemplo.com"
+                className="w-full bg-slate-700 border border-slate-600 rounded-md py-3 pl-10 pr-4 text-white placeholder-slate-400 focus:ring-2 focus:ring-sky-500 focus:border-sky-500"
+            />
+        </div>
+        <p className="text-xs text-slate-500 text-center">Seu e-mail é usado apenas para o registro do pagamento.</p>
+    </div>
+  );
+
   const renderContent = () => {
+    const payerEmail = getPayerEmail();
+
+    if (!isAuthenticated && !payerEmail) {
+        return renderGuestEmailInput();
+    }
+
     if (isLoading) {
       return <div className="text-center text-slate-300 p-8">Carregando gateway de pagamento...</div>;
     }
@@ -161,12 +198,8 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
       return <div className="text-center text-red-400 p-8">{error}</div>;
     }
 
-    if (preferenceId) {
-      // O container do Brick será renderizado aqui
-      return <div id="paymentBrick_container" className="p-6 sm:p-8"></div>;
-    }
-
-    return null;
+    // O container do Brick é renderizado aqui
+    return <div id="paymentBrick_container" className="p-6 sm:p-8"></div>;
   };
 
   return (

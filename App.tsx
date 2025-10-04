@@ -111,28 +111,31 @@ const AppContent: React.FC = () => {
 
 
   const handlePurchasePackage = useCallback((packageDetailsConstant: PackageDescription) => {
-    if (!isAuthenticated && !user) {
-        authHook.showAuthModal(guestWonPrizeForRegistration ? 'register' : 'login'); 
-        return;
-    }
-
+    // A lógica de autenticação foi removida. Todos os usuários (logados ou não)
+    // são direcionados para a PaymentPage, que agora lida com ambos os casos.
     let finalPriceDisplay = packageDetailsConstant.priceDisplay;
+    let finalPrice = packageDetailsConstant.originalPrice || 0;
     let appliedDiscountInfo: AwardedDiscount | undefined = undefined;
     
     const specificDiscountToUse = discountToApplyOnNextPurchase;
 
-    if (specificDiscountToUse && packageDetailsConstant.originalPrice) {
-        const discountAmount = packageDetailsConstant.originalPrice * (specificDiscountToUse.percentage / 100);
-        const discountedPrice = packageDetailsConstant.originalPrice - discountAmount;
-        finalPriceDisplay = `R$ ${discountedPrice.toFixed(2).replace('.', ',')}`;
-        appliedDiscountInfo = specificDiscountToUse;
-    } else if (user) { 
-        const activeFallbackDiscount = getActiveDiscount(user.id);
-        if (activeFallbackDiscount && packageDetailsConstant.originalPrice) {
-            const discountAmount = packageDetailsConstant.originalPrice * (activeFallbackDiscount.percentage / 100);
+    // A lógica de desconto só se aplica se houver um usuário para buscá-lo
+    if (user) {
+        if (specificDiscountToUse && packageDetailsConstant.originalPrice) {
+            const discountAmount = packageDetailsConstant.originalPrice * (specificDiscountToUse.percentage / 100);
             const discountedPrice = packageDetailsConstant.originalPrice - discountAmount;
             finalPriceDisplay = `R$ ${discountedPrice.toFixed(2).replace('.', ',')}`;
-            appliedDiscountInfo = activeFallbackDiscount;
+            finalPrice = discountedPrice;
+            appliedDiscountInfo = specificDiscountToUse;
+        } else {
+            const activeFallbackDiscount = getActiveDiscount(user.id);
+            if (activeFallbackDiscount && packageDetailsConstant.originalPrice) {
+                const discountAmount = packageDetailsConstant.originalPrice * (activeFallbackDiscount.percentage / 100);
+                const discountedPrice = packageDetailsConstant.originalPrice - discountAmount;
+                finalPriceDisplay = `R$ ${discountedPrice.toFixed(2).replace('.', ',')}`;
+                finalPrice = discountedPrice;
+                appliedDiscountInfo = activeFallbackDiscount;
+            }
         }
     }
     
@@ -143,6 +146,7 @@ const AppContent: React.FC = () => {
         accentColor: packageDetailsConstant.accentColor,
         bgColor: packageDetailsConstant.bgColor,
         priceDisplay: finalPriceDisplay,
+        price: finalPrice,
         benefits: packageDetailsConstant.benefits,
         uniqueSellingPoints: packageDetailsConstant.uniqueSellingPoints,
         targetAudience: packageDetailsConstant.targetAudience,
@@ -152,7 +156,7 @@ const AppContent: React.FC = () => {
 
     setPackageToPurchaseDetails(packageForPayment);
     handleNavigate('payment');
-  }, [user, isAuthenticated, discountToApplyOnNextPurchase, getActiveDiscount, handleNavigate, guestWonPrizeForRegistration, authHook]);
+  }, [user, discountToApplyOnNextPurchase, getActiveDiscount, handleNavigate]);
 
   // This effect is now primarily for ensuring the user context is updated after registration
   // The actual "claiming" (adding to user.awardedDiscounts) happens within AuthContext.register

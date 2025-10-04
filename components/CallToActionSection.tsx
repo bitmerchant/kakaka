@@ -12,11 +12,8 @@ const CallToActionSection: React.FC<CallToActionSectionProps> = ({ onPurchasePac
   const { isAuthenticated, showAuthModal, user } = useAuth();
 
   const handleAcquirePackage = () => {
-    if (isAuthenticated) {
-      onPurchasePackage(KAIROS_PACKAGE_ID, KAIROS_PACKAGE_DESCRIPTION);
-    } else {
-      showAuthModal('login');
-    }
+    // A verificação de autenticação foi removida para permitir o fluxo de convidado.
+    onPurchasePackage(KAIROS_PACKAGE_ID, KAIROS_PACKAGE_DESCRIPTION);
   };
 
   const hoverEffectClass = user?.isVip && user.themeSettings?.hoverEffect
@@ -42,10 +39,7 @@ const CallToActionSection: React.FC<CallToActionSectionProps> = ({ onPurchasePac
           Adquirir Pacote KAIROS ULTIMATE
         </button>
          <p className="mt-10 text-sm text-slate-400 italic">
-          {isAuthenticated
-            ? "Ao clicar, você será direcionado para a finalização da sua aquisição."
-            : "Faça login ou cadastre-se para adquirir seu acesso exclusivo ao Pacote KAIROS ULTIMATE e ao guia completo."
-          }
+          Ao clicar, você será direcionado para a finalização da sua aquisição.
         </p>
       </div>
     </section>

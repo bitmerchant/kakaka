@@ -45,6 +45,7 @@ export interface PackageDescription {
 
 export interface PackageForPaymentDisplay extends PackageDescription {
   id: string; // The ID of the package, e.g. KAIROS_PACKAGE_ID
+  price: number; // Final numeric price after discount, for the API
   // priceDisplay here will be the *final* price after discount for display on payment page
 }
 

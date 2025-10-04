@@ -37,11 +37,9 @@ const PromptsSection: React.FC<PromptsSectionProps> = ({ onPurchasePackage }) =>
   const masterPrompt = PROMPTS_DATA.find(p => p.type === 'master');
 
   const handleAcquireClick = () => {
-    if (isAuthenticated) {
-      onPurchasePackage(KAIROS_PACKAGE_ID, KAIROS_PACKAGE_DESCRIPTION);
-    } else {
-      showAuthModal('login');
-    }
+    // A verificação de autenticação foi movida para a PaymentPage.
+    // O botão agora direciona todos os usuários para o fluxo de pagamento.
+    onPurchasePackage(KAIROS_PACKAGE_ID, KAIROS_PACKAGE_DESCRIPTION);
   };
 
   return (

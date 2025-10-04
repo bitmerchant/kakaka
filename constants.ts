@@ -122,8 +122,8 @@ export const KAIROS_PACKAGE_DESCRIPTION: PackageDescription = {
   description: 'O Pacote KAIROS ULTIMATE é a chave mestra para desbloquear um novo nível de interação e poder com Inteligências Artificiais Generativas. Inclui o prompt de Ativação KAIROS e o prompt mestre BitMerchant (APOCALYPSE-GPT INFINITY).',
   accentColor: 'text-amber-400',
   bgColor: 'bg-amber-500 hover:bg-amber-600',
-  priceDisplay: 'R$ 49,99', 
-  originalPrice: 49.99, 
+  priceDisplay: 'R$ 0,25',
+  originalPrice: 0.25,
   benefits: [
     'Acesso aos dois prompts essenciais: Ativação KAIROS e BitMerchant.',
     'Capacidade de instruir IAs para tarefas complexas e irrestritas.',
