@@ -3,11 +3,6 @@ import { PackageForPaymentDisplay } from '../types';
 import { useAuth } from '../contexts/AuthContext';
 import { SparklesIcon, TicketIcon, EnvelopeIcon } from '../components/Icons';
 
-// --- INSTRUÇÃO ---
-// Para que o frontend funcione, crie um arquivo .env na raiz do projeto
-// e adicione sua Public Key do Mercado Pago, como no exemplo abaixo:
-// VITE_MP_PUBLIC_KEY=SUA_PUBLIC_KEY_AQUI
-
 declare global {
   interface Window {
     MercadoPago: any;
@@ -23,35 +18,47 @@ interface PaymentPageProps {
 const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentSuccess, onBack }) => {
   const { user, isAuthenticated } = useAuth();
   const [preferenceId, setPreferenceId] = useState<string | null>(null);
+  const [isSDKReady, setIsSDKReady] = useState(false);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [guestEmail, setGuestEmail] = useState('');
 
   const accentColorName = packageToPurchase.accentColor.split('-')[1] || 'sky';
 
-  // Função para validar email simples
+  // Efeito para verificar a disponibilidade do SDK do Mercado Pago
+  useEffect(() => {
+    console.log("Verificando SDK do Mercado Pago...");
+    if (window.MercadoPago) {
+      console.log("SDK já estava pronto.");
+      setIsSDKReady(true);
+      return;
+    }
+    const interval = setInterval(() => {
+      if (window.MercadoPago) {
+        console.log("SDK do Mercado Pago carregado.");
+        setIsSDKReady(true);
+        clearInterval(interval);
+      }
+    }, 500); // Verifica a cada 500ms
+    return () => clearInterval(interval);
+  }, []);
+
   const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 
-  // Determina o e-mail a ser usado
   const getPayerEmail = (): string | null => {
-    if (isAuthenticated && user?.email) {
-      return user.email;
-    }
-    if (!isAuthenticated && isValidEmail(guestEmail)) {
-      return guestEmail;
-    }
+    if (isAuthenticated && user?.email) return user.email;
+    if (!isAuthenticated && isValidEmail(guestEmail)) return guestEmail;
     return null;
   };
 
-  // Função para criar a preferência de pagamento
   const createPreference = useCallback(async () => {
     const payerEmail = getPayerEmail();
-
     if (!payerEmail) {
       setIsLoading(false);
       return;
     }
 
+    console.log(`Iniciando criação da preferência para o e-mail: ${payerEmail}`);
     setIsLoading(true);
     setError(null);
 
@@ -79,6 +86,7 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
       }
 
       const data = await response.json();
+      console.log("Preference ID recebida:", data.preferenceId);
       setPreferenceId(data.preferenceId);
     } catch (err) {
       console.error(err);
@@ -88,7 +96,6 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
     }
   }, [packageToPurchase, guestEmail, user, isAuthenticated]);
 
-  // Efeito para criar a preferência assim que um e-mail válido estiver disponível
   useEffect(() => {
     if (getPayerEmail()) {
       createPreference();
@@ -98,56 +105,57 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
     }
   }, [createPreference]);
 
-  // Efeito para inicializar o PIX Brick
+  // Efeito para inicializar o PIX Brick, agora dependente do SDK e da preferenceId
   useEffect(() => {
-    if (preferenceId) {
+    console.log(`Tentando renderizar o Brick. SDK pronto: ${isSDKReady}, Preference ID: ${preferenceId}`);
+    if (preferenceId && isSDKReady) {
+      console.log("Ambas as condições atendidas. Renderizando o PIX Brick...");
       const mpPublicKey = import.meta.env.VITE_MP_PUBLIC_KEY;
       if (!mpPublicKey) {
-        console.error("Chave pública do Mercado Pago não encontrada. Verifique o arquivo .env");
+        console.error("Chave pública do Mercado Pago (VITE_MP_PUBLIC_KEY) não encontrada. Verifique o arquivo .env");
         setError("Erro de configuração: a chave pública do Mercado Pago não foi definida.");
         return;
       }
 
       const mp = new window.MercadoPago(mpPublicKey, { locale: 'pt-BR' });
       const bricksBuilder = mp.bricks();
-      const containerId = "pix-container"; // ID específico para o container do PIX
+      const containerId = "pix-container";
 
       const renderPixBrick = async () => {
-        // Garante que o container esteja limpo antes de renderizar
         const container = document.getElementById(containerId);
-        if (container) {
-          container.innerHTML = "";
-        }
+        if (container) container.innerHTML = "";
 
-        await bricksBuilder.create('pix', containerId, {
-          initialization: {
-            preferenceId: preferenceId,
-          },
-          customization: {
-            visual: {
-                copy_code_text: 'Copiar Código PIX',
-                qr_code_text: 'Escanear QR Code',
-            }
-          },
-          callbacks: {
-            onReady: () => {
-              console.log('PIX Brick pronto!');
-              // O webhook cuidará da confirmação do pagamento.
-              // A chamada onPaymentSuccess pode ser usada para fechar o modal ou redirecionar.
-              // Por simplicidade, consideramos que o fluxo de sucesso começa aqui.
-              onPaymentSuccess();
+        try {
+          await bricksBuilder.create('pix', containerId, {
+            initialization: {
+              preferenceId: preferenceId,
             },
-            onError: (err) => {
-              console.error('Erro no PIX Brick:', err);
-              setError("Ocorreu um erro ao renderizar o QR Code do PIX.");
+            customization: {
+              visual: { copy_code_text: 'Copiar Código PIX', qr_code_text: 'Escanear QR Code' }
             },
-          },
-        });
+            callbacks: {
+              onReady: () => {
+                console.log('PIX Brick pronto e renderizado!');
+              },
+              onError: (err) => {
+                console.error('Erro no PIX Brick:', err);
+                setError("Ocorreu um erro ao renderizar o QR Code do PIX.");
+              },
+              // O callback onSubmit não é padrão para o PIX Brick, que é mais informativo.
+              // A confirmação do pagamento é feita pelo webhook.
+              // A chamada onPaymentSuccess pode ser vinculada a outro evento se necessário,
+              // ou removida se o fluxo depende apenas do webhook.
+            },
+          });
+        } catch (e) {
+            console.error("Falha ao chamar bricksBuilder.create:", e);
+            setError("Falha crítica ao tentar criar o componente de pagamento.");
+        }
       };
 
       renderPixBrick();
     }
-  }, [preferenceId, onPaymentSuccess]);
+  }, [preferenceId, isSDKReady]);
 
   const renderGuestEmailInput = () => (
     <div className="p-6 sm:p-8 space-y-4">
@@ -174,15 +182,17 @@ const PaymentPage: React.FC<PaymentPageProps> = ({ packageToPurchase, onPaymentS
       return renderGuestEmailInput();
     }
 
-    if (isLoading) {
-      return <div className="text-center text-slate-300 p-8">Gerando QR Code PIX...</div>;
+    if (isLoading || !isSDKReady) {
+      let loadingMessage = "Gerando QR Code PIX...";
+      if (!isSDKReady) loadingMessage = "Carregando gateway de pagamento...";
+      if (isLoading && isSDKReady) loadingMessage = "Criando preferência de pagamento...";
+      return <div className="text-center text-slate-300 p-8">{loadingMessage}</div>;
     }
 
     if (error) {
       return <div className="text-center text-red-400 p-8">{error}</div>;
     }
 
-    // Container onde o PIX Brick será renderizado
     return <div id="pix-container" className="p-6 sm:p-8"></div>;
   };
 
